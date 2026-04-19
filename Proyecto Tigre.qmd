@@ -1,0 +1,670 @@
+---
+title: "Proyecto Proposal"
+
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    page-layout: full
+    toc: false
+    embed-resources: true
+
+    include-in-header:
+      text: |
+        <!-- Fuente estilo editorial -->
+        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+
+        <style>
+        .title {
+          display: none;
+        }
+
+        .page-columns {
+          max-width: 100% !important;
+        }
+
+        .page-full {
+          max-width: 100% !important;
+        }
+
+        .content {
+          max-width: 100% !important;
+          padding-left: 20px;
+          padding-right: 20px;
+        }
+
+        body {
+          font-family: Arial, sans-serif;
+        }
+
+        h1, h2, h3 {
+          font-family: 'Playfair Display', serif;
+          letter-spacing: 0.5px;
+        }
+
+        .navbar-brand {
+          font-family: 'Playfair Display', serif;
+          font-size: 1.5rem;
+          letter-spacing: 1px;
+        }
+
+        .leaflet-container {
+          width: 100% !important;
+        }
+        </style>
+
+    include-before-body:
+      text: |
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+          <div class="container-fluid" style="display: flex; flex-direction: column; align-items: flex-start;">
+            
+            <span class="navbar-brand">Proyecto Proposal</span>
+            
+            <span style="color: #cccccc; font-size: 0.9rem;">
+              2eTV | UNSAM
+            </span>
+
+          </div>
+        </nav>
+
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(sf)
+library(dplyr)
+library(leaflet)
+library(RColorBrewer)
+library(geoAr)
+library(readxl)
+library(gridExtra)
+```
+
+```{r}
+setwd("C:/Proyecto dengue Tigre")
+
+dengue <- read_csv("ovitrampas_tigre.csv")
+
+dengue$latitud <-  as.numeric(dengue$latitud)
+dengue$longitud <-  as.numeric(dengue$longitud)
+
+dengue$semana <- as.factor(dengue$semana)
+
+```
+
+```{r}
+promedio_semanal <- dengue %>%
+  summarise(promedio = mean(total_conteo_ovi, na.rm = TRUE)) %>%
+  pull(promedio)
+```
+
+```{r}
+#| echo: false
+#| results: 'hide'
+
+# Cargar datos:
+
+provincias <- get_geo(geo = "BUENOS AIRES")
+names(provincias)
+
+mapa_tigre <- provincias %>% 
+  filter(coddepto_censo == "805") %>% # código de Tigre (805)
+  st_transform(5347)# Lo pasamos a metros como tus otros datos
+  
+
+# Análisis espacial o cartográfico
+
+espacial <- dengue %>% 
+  select(semana, latitud, longitud, seccion, ovitrampa, total_conteo_ovi) %>% 
+  filter(!is.na(total_conteo_ovi), !is.na(latitud), !is.na(longitud)) %>% 
+  # 2. Conversión a objeto espacial (WGS84)
+  st_as_sf(coords = c("longitud", "latitud"), crs = 4326) %>% # crs (sistemas de coordenadas) identifica el tipo de escala que tienen los datos (metros/grados)
+  # 3. Transformación a metros (POSGAR 2007 Faja 7)
+  st_transform(5347) %>% 
+  # 4. Crear columnas numéricas X e Y (opcional)
+  mutate(
+    x_metros = st_coordinates(.)[,1],
+    y_metros = st_coordinates(.)[,2]
+  )
+```
+
+```{r}
+# Transformar coordenadas a WGS84 (necesario para leaflet)  
+
+espacial_leaflet <- espacial %>%   st_transform(4326)
+```
+
+```{r}
+# Crear paleta de colores
+paleta_conteo <- colorNumeric(   
+  palette = "YlOrRd",   
+  domain = espacial_leaflet$total_conteo_ovi )
+```
+
+```{r}
+# Crear mapa base
+mapa <- leaflet(espacial_leaflet) %>%   
+  addTiles()
+```
+
+```{r}
+# Obtener semanas
+semanas <- unique(espacial_leaflet$semana)
+```
+
+```{r}
+recolec <- dengue %>% 
+  select(semana, fecha_inicio, fecha_fin, seccion, ovi_con_huevos, ovi_total_recolectada) %>% 
+  group_by(semana) %>% 
+  mutate(indice_ovi = ovi_con_huevos/ovi_total_recolectada) %>% 
+  unique()
+```
+
+::: {.panel-tabset}
+
+## English
+
+# Pheromone-Based Mosquito Control in Residential Areas Using Dispersers located in Public-Space
+
+### Spatial distribution of ovitraps
+
+<details>
+
+<summary><b>Description</b></summary>
+
+This report presents the weekly monitoring of oviposition patterns of Aedes aegypti —2026 season— in the Tigre district, located in the northern area of the Buenos Aires Metropolitan Area.
+
+The sampling area consists of six plots distributed across the cities of Don Torcuato, El Talar, General Pacheco, and Benavídez. These are organized into three treatment plots (A, B, and C) and three control plots (D, E, and F).
+
+Each plot, composed of blocks of 7 × 7 city blocks (approximately 0.5 km²), includes 18 ovitraps installed at fixed sampling points (see map for their location). The ovitraps are checked and replaced weekly.
+
+</details>
+
+#### Ovitrap mapping
+
+The map shows the weekly evolution of *Aedes aegypti* egg counts in spatially distributed ovitraps.
+
+<details>
+
+<summary><b>Navigation instructions</b></summary>
+
+-   Each circle represents the spatial location of an ovitrap.
+
+-   Both the color and the size of the circles indicate the number of eggs recorded: higher values are represented by more intense colors (from yellow to red) and larger circle diameters.
+
+-   By clicking on an ovitrap, information about the week, the section or label, the ovitrap number, and the number of eggs recorded is displayed.
+
+-   The right-hand side panel allows selecting and viewing different sampling weeks.
+
+</details>
+
+```{r}
+
+#| echo: false
+
+# Última semana
+ultima_semana <- max(as.numeric(dengue$semana))
+
+# Promedio última semana
+promedio_semanal <- dengue %>%
+  filter(semana == ultima_semana) %>%
+  summarise(promedio = mean(total_conteo_ovi, na.rm = TRUE)) %>%
+  pull(promedio)
+
+# Tendencia
+tendencia_df <- dengue %>%
+  group_by(semana) %>%
+  summarise(promedio = mean(total_conteo_ovi, na.rm = TRUE)) %>%
+  arrange(semana) 
+  
+
+ultimas <- tail(tendencia_df$promedio, 2)
+
+tendencia_txt <- case_when(
+  ultimas[2] > ultimas[1] ~ "↑",
+  ultimas[2] < ultimas[1] ~ "↓",
+  TRUE ~ "→"
+)
+```
+
+```{r}
+#| echo: false
+#| results: asis
+
+cat(paste0(
+  "<h3>Weekly indicators</h3>",
+  "<b>Week:</b> ", ultima_semana, "<br>",
+  "<b>Mean weekly egg count per ovitrap:</b> ", round(promedio_semanal, 1), "<br>",
+  "<b>Trend:</b> ", tendencia_txt
+))
+```
+
+```{r}
+# Agregar puntos por semana
+for(s in semanas){   
+  data_semana <- espacial_leaflet %>%     
+  filter(semana == s)    
+  
+  mapa <- mapa %>%     
+    addCircleMarkers(       
+      data = data_semana,       
+      color = ~paleta_conteo(total_conteo_ovi),       
+      radius = ~sqrt(total_conteo_ovi) * 2 + 3,       
+      fillOpacity = 0.8,       stroke = FALSE,       
+      group = as.character(s),       
+      popup = ~paste0(        
+        "<b>Semana:</b> ", semana, "<br>",         
+        "<b>Sección:</b> ", seccion, "<br>",         
+        "<b>Ovitrampa:</b> ", ovitrampa, "<br>",        
+        "<b>Huevos:</b> ", total_conteo_ovi       
+      )     
+    ) 
+  }
+```
+
+```{r}
+
+mapa_final <- mapa %>%   
+  addLayersControl(     overlayGroups = as.character(semanas),     
+                        options = layersControlOptions(collapsed = FALSE)   ) %>%   
+  addLegend(     pal = paleta_conteo,     
+                 values = ~total_conteo_ovi,     
+                 title = "Egg count",     
+                 position = "bottomright"   )  
+
+#| echo: false
+mapa_final
+```
+
+*Spatial and temporal distribution of the number of eggs recorded in the sampling areas. The color of the points represents oviposition intensity, and the size of the circles indicates the magnitude of the count, allowing for visual identification of areas with higher oviposition activity.*
+
+<details>
+
+<summary><b>Graphs</b></summary>
+
+Below is a series of graphs showing the temporal evolution of the oviposition index recorded in ovitraps across the different sampling points.
+
+```{r}
+recolec$etiqueta_semana <- paste0(recolec$semana, " (", recolec$fecha_inicio, " al ", recolec$fecha_fin, ")")
+
+recolec$etiqueta_semana <- reorder(recolec$etiqueta_semana, as.numeric(recolec$semana))
+
+
+
+mis_colores2 <- c("#64557B",  "#8C7DA8", "#BBA6DD", "#62866C", "#8BA47C","#B4CFA4")
+
+#mis_colores2 <- c("#F67B45","#510A32", "#62866C","#BDC3C7", "#C72C41",  "#32769B")
+#mis_colores <- c("#03045E",  "#D62828", "#1B4332", "#F77F00", "#00B4D8", "#74C69D")
+
+# Grafico total (todos los tratamientos + controles): 
+
+ggplot(recolec, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 1) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 1)+
+  labs(
+    title = 'Evolución del índice de oviposición',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores2)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40)
+        )
+```
+
+*Fig. 1. Temporal evolution of the oviposition index for all evaluated plots. The oviposition index is calculated as the total number of ovitraps with eggs divided by the total number of ovitraps collected. Purple points represent treatment plots and green points represent control plots. Point size is proportional to the number of ovitraps with eggs collected per plot and sampling week.*
+
+```{r}
+## A - E
+
+trat_control_1 <- recolec %>% 
+  filter(seccion %in% c("A", "E"))
+
+mis_colores_t_c1 <- c("#ff9770", "#ffd670")  
+
+ggplot(trat_control_1 , aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento A control E',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c1)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+```
+
+*Fig. 2. Temporal evolution of the oviposition index for treatment plot A and its control plot E (Don Torcuato). Point size corresponds to the coding detailed in Figure 1.*
+
+```{r}
+## B - D
+
+trat_control_2 <- recolec %>% 
+  filter(seccion %in% c("B", "D"))
+
+mis_colores_t_c2 <- c("#32769B", "#A0C5E3") 
+
+ggplot(trat_control_2, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento B control D',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c2)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+```
+
+*Fig. 3. Temporal evolution of the oviposition index for treatment plot B and its control plot D (Gral. Pacheco and El Talar). Point size corresponds to the coding detailed in Figure 1.*
+
+```{r}
+## C - F
+
+
+trat_control_3 <- recolec %>% 
+  filter(seccion %in% c("C", "F"))
+
+mis_colores_t_c3 <- c("#CB7876","#FBC2C2")
+
+ggplot(trat_control_3, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento C control F',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c3)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+```
+
+*Fig. 4. Temporal evolution of the oviposition index for treatment plot C and its control plot F (Benavídez). Point size corresponds to the coding detailed in Figure 1.*
+
+</details>
+
+> The data presented on this page are updated weekly as new sampling records are incorporated.
+
+---
+
+## Español
+
+# Control de mosquitos en áreas residenciales mediante el uso de feromonas liberadas por dispersores ubicados en espacios públicos
+
+### Distribución espacial de ovitrampas
+
+<details>
+
+<summary><b>Descripción</b></summary>
+
+Este informe presenta el monitoreo semanal de los patrones de oviposición de Aedes aegypti —temporada 2026— en el partido de Tigre, ubicado en la zona norte del Área Metropolitana de Buenos Aires.
+
+El área de muestreo está compuesta por seis parcelas distribuidas en las cuidades de Don Torcuato, El Talar, General Pacheco y Benavídez. Estas se organizan en tres parcelas de tratamiento (A, B y C) y tres parcelas de control (D, E y F).
+
+Cada parcela, compuesta por bloques de 7 x 7 cuadras (aproximado de 0,5 km²), cuenta con 18 ovitrampas instaladas en puntos fijos de muestreo (ver mapa para su localización). Las ovitrampas se revisan y reemplazan semanalmente.
+
+</details>
+
+#### Mapeo de ovitrampas
+
+El mapa presenta la evolución semanal del conteo de huevos de Aedes aegypti en ovitrampas distribuidas espacialmente.
+
+<details>
+
+<summary><b>Instrucciones de navegación</b></summary>
+
+-   Cada círculo representa la localización espacial de una ovitrampa.
+
+-   Tanto el color como el tamaño de los círculos indican la cantidad de huevos registrados: valores más altos se representan con colores de mayor intensidad (de amarillo a rojo) y círculos de mayor diámetro.
+
+-   Al hacer clic sobre una ovitrampa, se visualiza la información de la semana, la sección o etiqueta, el número de la ovitrampa y la cantidad de huevos registrados.
+
+-   El panel lateral derecho permite seleccionar y visualizar las distintas semanas de muestreo.
+
+</details>
+
+```{r}
+
+#| echo: false
+
+# Última semana
+ultima_semana <- max(as.numeric(dengue$semana))
+
+# Promedio última semana
+promedio_semanal <- dengue %>%
+  filter(semana == ultima_semana) %>%
+  summarise(promedio = mean(total_conteo_ovi, na.rm = TRUE)) %>%
+  pull(promedio)
+
+# Tendencia
+tendencia_df <- dengue %>%
+  group_by(semana) %>%
+  summarise(promedio = mean(total_conteo_ovi, na.rm = TRUE)) %>%
+  arrange(semana)
+
+ultimas <- tail(tendencia_df$promedio, 2)
+
+tendencia_txt <- case_when(
+  ultimas[2] > ultimas[1] ~ "↑",
+  ultimas[2] < ultimas[1] ~ "↓",
+  TRUE ~ "→"
+)
+```
+
+```{r}
+#| echo: false
+#| results: asis
+
+cat(paste0(
+  "<h3>Indicadores semanales</h3>",
+  "<b>Semana:</b> ", ultima_semana, "<br>",
+  "<b>Promedio semanal de huevos por ovitrampa:</b> ", round(promedio_semanal, 1), "<br>",
+  "<b>Tendencia:</b> ", tendencia_txt
+))
+```
+
+```{r}
+# Agregar puntos por semana
+for(s in semanas){   
+  data_semana <- espacial_leaflet %>%     
+  filter(semana == s)    
+  
+  mapa <- mapa %>%     
+    addCircleMarkers(       
+      data = data_semana,       
+      color = ~paleta_conteo(total_conteo_ovi),       
+      radius = ~sqrt(total_conteo_ovi) * 2 + 3,       
+      fillOpacity = 0.8,       stroke = FALSE,       
+      group = as.character(s),       
+      popup = ~paste0(        
+        "<b>Semana:</b> ", semana, "<br>",         
+        "<b>Sección:</b> ", seccion, "<br>",         
+        "<b>Ovitrampa:</b> ", ovitrampa, "<br>",        
+        "<b>Huevos:</b> ", total_conteo_ovi       
+      )     
+    ) 
+  }
+```
+
+```{r}
+
+
+mapa_final <- mapa %>%   
+  addLayersControl(     overlayGroups = as.character(semanas),     
+                        options = layersControlOptions(collapsed = FALSE)   ) %>%   
+  addLegend(     pal = paleta_conteo,     
+                 values = ~total_conteo_ovi,     
+                 title = "Cantidad de huevos",     
+                 position = "bottomright"   )  
+
+#| echo: false
+mapa_final
+```
+
+*Distribución espacial y temporal de la cantidad de huevos registrados en las áreas de muestreo. El color de los puntos representa la intensidad de la oviposición y el tamaño de los círculos indica la magnitud del registro, lo que permite identificar visualmente áreas con mayor actividad de oviposición.*
+
+<details>
+
+<summary><b>Gráficos</b></summary>
+
+A continuación se presenta una serie de gráficos que muestran la evolución temporal del índice de oviposición registrado en las ovitrampas de los distintos puntos de muestreo.
+
+```{r}
+### ¿La presencia del huevo (vector) cambia en el tiempo? Esto mide OCUPACION ESPACIAL, no abundancia.  
+
+recolec$etiqueta_semana <- paste0(recolec$semana, " (", recolec$fecha_inicio, " al ", recolec$fecha_fin, ")")
+
+recolec$etiqueta_semana <- reorder(recolec$etiqueta_semana, as.numeric(recolec$semana))
+
+
+
+mis_colores2 <- c("#64557B",  "#8C7DA8", "#BBA6DD", "#62866C", "#8BA47C","#B4CFA4")
+
+#mis_colores2 <- c("#F67B45","#510A32", "#62866C","#BDC3C7", "#C72C41",  "#32769B")
+#mis_colores <- c("#03045E",  "#D62828", "#1B4332", "#F77F00", "#00B4D8", "#74C69D")
+
+# Grafico total (todos los tratamientos + controles): 
+
+ggplot(recolec, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 1) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 1)+
+  labs(
+    title = 'Evolución del índice de oviposición',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores2)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40)
+        )
+
+
+```
+
+*Fig 1. Evolución temporal del índice de oviposición para todas las parcelas evaluadas. El índice de oviposición se calcula como el total de ovitrampas con huevos dividido por el total ovitrampas recolectadas. Los puntos violetas representan los tratamientos y los verdes los controles. El tamaño del punto es proporcional la cantidad de ovitrampas con huevos recolectadas por parcela y semana de muestreo.*
+
+```{r}
+## A - E
+
+trat_control_1 <- recolec %>% 
+  filter(seccion %in% c("A", "E"))
+
+mis_colores_t_c1 <- c("#ff9770", "#ffd670")  
+
+ggplot(trat_control_1 , aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento A control E',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c1)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+```
+
+*Fig 2. Evolución temporal del índice de oviposición para la parcela de tratamiento A y su control E (Don Torcuato). El tamaño de los puntos corresponden a la codificación detallada en la **Figura 1**.*
+
+```{r}
+## B - D
+
+trat_control_2 <- recolec %>% 
+  filter(seccion %in% c("B", "D"))
+
+mis_colores_t_c2 <- c("#32769B", "#A0C5E3") 
+
+ggplot(trat_control_2, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento B control D',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c2)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+
+```
+
+*Fig 3. Evolución temporal del índice de oviposición para la parcela de tratamiento B y su control D (Gral. Pacheco y El Talar). El tamaño de los puntos corresponden a la codificación detallada en la **Figura 1**.*
+
+```{r}
+## C - F
+
+
+trat_control_3 <- recolec %>% 
+  filter(seccion %in% c("C", "F"))
+
+mis_colores_t_c3 <- c("#CB7876","#FBC2C2")
+
+ggplot(trat_control_3, aes(x = etiqueta_semana, y = indice_ovi, color = seccion, group = seccion)) +
+  geom_line(linewidth = 0.7, alpha = 0.5) +
+  geom_point(aes(size =ovi_total_recolectada ), alpha = 0.8)+
+  labs(
+    title = 'Evolución tratamiento C control F',
+    y = 'Índice oviposición',
+    x = 'Semana',
+    color = 'Etiqueta/Sección',
+    size = 'Cantidad de ovitrampas'
+  )+
+  scale_color_manual(values = mis_colores_t_c3)+
+  scale_y_continuous(breaks = seq(0, 10, by = 0.05))+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = -45, vjust = 0.05, hjust = 0.05),
+        plot.margin = margin(t = 40))
+```
+
+*Fig 4. Evolución temporal del índice de oviposición para la parcela de tratamiento C y su control F (Benavidez). El tamaño de los puntos corresponden a la codificación detallada en la **Figura 1**.*
+
+</details>
+
+> Los datos presentados en esta página **se actualizan semana a semana** a medida que se incorporan nuevos registros de muestreo.
+
+:::
+
